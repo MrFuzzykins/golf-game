@@ -1,0 +1,377 @@
+//<>// //<>// //<>// //<>// //<>// //<>// //<>// //<>//
+float noiseVal;
+float converted_Noise_Val;
+float cubeWidth;
+float cubeHeight;
+
+float friction = 0.97;
+float ball_size = 30;
+float vector_init_velocity = 0;
+float velocity_limit = 36;
+float velocity_minimum = 0;
+
+float xOff = 0;
+float yOff = 0;
+float offInc = 0.1;
+
+PVector Cube_Pos = new PVector(0, 13);
+PVector cube_Pos_Inc = new PVector(10, 10);
+
+float[][] green_Colours_Arrs;
+PVector[][] new_Grass_Coords;
+
+PVector player_Velocity = new PVector(5, 0); 
+PVector player_Position = new PVector(500, 800);
+PVector border_vector = new PVector(30, 0);
+PVector hole_position;
+
+//PVector acceleration = new PVector(0, 0.17);
+PVector acceleration = new PVector(0, 0.5);
+
+boolean was_n_pressed = false;
+
+boolean boolean_switch = true;
+boolean launch_mode = true;
+
+boolean bswitch = false;
+boolean aswitch = true;
+boolean player_border_hit_check = true;
+boolean canmove = true;
+
+int player_colour = 255;
+int ball_colour = 255;
+int background_colour = 100;
+
+int border_boundary = 810;
+
+int red_min_colour = 100;
+int red_max_colour = 255;
+
+int power_scale_size = 40;
+
+int hole_size = 80;
+int hole_colour = 20;
+
+int ydir = 1;
+int xdir = 1;
+
+int cols;
+int rows;
+
+// dynamic array to store golf ball and corresponding velocity vector
+ArrayList<PVector> golf_Balls = new ArrayList<PVector>();
+ArrayList<PVector> velocity_Vectors = new ArrayList<PVector>();
+
+void setup() {
+
+
+  size(1280, 960);
+  cols = 100;
+  rows = 60;
+  cubeWidth = 13;
+  cubeHeight = cubeWidth;
+
+  green_Colours_Arrs = generate_Colours_Array(cols, rows, xOff, yOff);
+  new_Grass_Coords = generate_Grass_Coordinates(cols, rows, Cube_Pos);
+
+  hole_position = generate_hole_coordinates();
+}
+
+void draw() {
+  background(background_colour);
+
+  check_win_aka_got_the_dub();
+
+  draw_Grass_Background(green_Colours_Arrs, new_Grass_Coords, cols, rows);
+
+  drawPlayer();
+
+  move_Player();
+
+  draw_hole(hole_position);
+
+  draw_balls();
+
+  power_ball();
+}
+
+float[][] generate_Colours_Array(int cols, int rows, float xOff, float yOff) {
+  float[][] arr_Colours = new float[cols][rows];
+  //change characteristic of background, the first input is changing the octave, which is like the intensity of the function
+  // the second number describes the detail of perlin noise, i.e. higher the number, the finer the details
+  noiseDetail(8, 0.05);
+  //the noise function aka perlin noise generates harmonic patterns often use for natural background because the last value used would be similar to the next
+  //the function generates random patterns similar to wave functions i.e. sine.
+  // this can be translated in 2d through nested for loops
+  for (int i = 0; i < cols; i++) {
+    //for every increment to the 'x offset' the 'y offset' resets 
+    xOff += offInc;
+    yOff = 0;
+    for (int j = 0; j < rows; j++) {
+      yOff += offInc;
+      //note, noise function generates numbers between 0,1. no matter how large the numbers are since the wave is repeating.
+      noiseVal = noise(xOff, yOff);
+      // map generate noise values to desired rbg range
+      converted_Noise_Val = map(noiseVal, 0, 1, 50, 255);
+      arr_Colours[i][j] = converted_Noise_Val;
+    }
+  }
+  return arr_Colours;
+}
+
+PVector[][] generate_Grass_Coordinates(int cols, int rows, PVector init_Cube_Pos) {
+  PVector[][] arr_Grass_Coords = new PVector[cols][rows];
+  for (int i = 0; i < cols; i++) {
+    init_Cube_Pos.x += (i == 0) ? 0 : 13; // sets x value to 0 for every new column
+    for (int j = 0; j < rows; j++) {
+      init_Cube_Pos.y = (j == 0) ? 0 : init_Cube_Pos.y + 13; // sets y value to 13 (height of the cube from the corner) for every new row
+      arr_Grass_Coords[i][j] = new PVector(init_Cube_Pos.x, init_Cube_Pos.y); // stores points as Pvectors
+    }
+  }
+  return arr_Grass_Coords;
+}
+
+
+void draw_Grass_Background(float[][] arr_Colours, PVector[][] arr_Grass_Coords, int cols, int rows) {
+  for (int i = 0; i < cols; i++) {
+    for (int j = 0; j < rows; j++) {
+      fill(0, arr_Colours[i][j], 0);
+      rect(arr_Grass_Coords[i][j].x, arr_Grass_Coords[i][j].y, cubeWidth, cubeHeight);
+    }
+  }
+}
+
+void keyPressed() {
+  bswitch = true;
+
+  // on keypressed, check if launch is true  -> then creates golf ball and corresponding physics
+  // if launch mode if false, set it to true, on next keypress, the launch mode will create a ball since keypressed runs only once.
+  if (launch_mode) {
+    create_Golf_Ball();
+    launch_mode = false;
+    canmove = false;
+  } else {
+    launch_mode = true;
+    canmove = true;
+  }
+}
+
+void create_Golf_Ball() {
+  // a vector is also made for each golf ball
+  PVector new_golf_ball = new PVector(player_Position.x, player_Position.y);
+  PVector new_Velocity = new PVector(0, vector_init_velocity);
+  golf_Balls.add(new_golf_ball);
+  velocity_Vectors.add(new_Velocity);
+}
+
+void ball_Physics() {
+  // loops through golf ball array
+  for (int i = 0; i < golf_Balls.size(); i++) {
+    // gets an instance of a golf ball with its corresponding vector
+    PVector v = velocity_Vectors.get(i);
+    PVector golf_Ball = golf_Balls.get(i);
+    // golf ball position is changed by adding the velocity, meanwhile the velocity progressively decreases due to the coefficient of friction.
+    golf_Ball.add(v.mult(friction));
+    //takes instances of velocity vector and golf ball pos and does actions on border collisions and ball collisions.
+    check_Border_Collisions(v, golf_Ball);
+    check_Ball_Collisions(v, golf_Ball);
+  }
+  check_golf_ball_arr();
+}
+
+void drawPlayer() {
+  fill(player_colour);
+  rect(player_Position.x, player_Position.y, 20, 20);
+}
+
+void check_golf_ball_arr() {
+  //remove oldest vectors and golf balls
+  if (golf_Balls.size() > 10) {
+    golf_Balls.remove(0);
+    velocity_Vectors.remove(0);
+  }
+}
+
+void power_ball() {
+  if (!launch_mode) {
+    // gets the newest vector stored in array
+    PVector v = velocity_Vectors.get(velocity_Vectors.size()-1);  
+    //the initial velocity is determined by adding and subtracting the acceleration constant, through trial and error and guesstimation maths, i found appropriate limits for the velocity
+    // checks if the velocity is greater or equal to the limit, initially, boolean switch is true, after the velocity is greater then the limit, the boolean switch becomes false
+    if (v.y >= -velocity_limit && boolean_switch) {
+      v.y -= acceleration.y;
+      draw_power_scale(v);
+    } else {
+      boolean_switch = false;
+    }
+    // similar to above function but inverts the boolean switch to become true and repeats the similar process of adding acceleration.
+    if (v.y <= -velocity_minimum && !boolean_switch) {
+      v.y += acceleration.y;
+      draw_power_scale(v);
+    } else {
+      boolean_switch = true;
+    }
+  } else {
+    ball_Physics();
+  }
+}
+
+void draw_power_scale(PVector v) {
+  // acceleration is proportional to the colour intensity
+  // map function maps the min and max from a variable to the corresponding desired range
+  fill(map(v.y, -velocity_minimum, -velocity_limit, red_min_colour, red_max_colour), 0, 0);
+  rect(player_Position.x+40, player_Position.y, power_scale_size, power_scale_size);
+}
+
+
+void check_Border_Collisions(PVector velocity, PVector ball_position) {
+
+  // change direction of x and y components if it hits wall
+
+  if (ball_position.y < ball_size) {
+    ball_position.y = ball_size;
+    velocity.y *= -ydir;
+  } else if (ball_position.y > border_boundary-ball_size) {
+    ball_position.y = border_boundary-ball_size;
+    velocity.y *= -ydir;
+  } 
+
+  if (ball_position.x < ball_size) {
+    ball_position.x = ball_size;
+    velocity.x *= -xdir;
+  } else if (ball_position.x > width-ball_size) {
+    ball_position.x = width-ball_size;
+    velocity.x *= -xdir;
+  }
+}
+
+void draw_balls() {
+  // loops through golf ball array and draws every ball
+  for (int i = 0; i < golf_Balls.size(); i++) {
+    fill(ball_colour);
+    PVector golf_Ball = golf_Balls.get(i);
+    ellipse(golf_Ball.x, golf_Ball.y, ball_size, ball_size);
+  }
+}
+
+void check_Ball_Collisions(PVector velocity, PVector ball_position) {
+  //this function should run if there are atleast 2 balls 
+  // ball collisions is 2d conservation of momentum symplified and some vector maths
+
+  //compare distance to every ball in array
+  for (int i = 0; i < golf_Balls.size(); i++) {
+    //this condition makes sure that it does not calculate it's own position in the array, otherwise it messes up the physics. i.e. it subtracts its position with itself, which = 0.
+    if (golf_Balls.get(i) != ball_position) {
+      //distance between the two balls is a scalar without direction
+      PVector distance_Vector = PVector.sub(golf_Balls.get(i), ball_position);
+      // magnitude of vector aka length of the vector
+      float mag_dist_vect = distance_Vector.mag();
+      float ball_touch_distance = ball_size;
+
+      // check if distance vector touches the ball  
+      if (mag_dist_vect < ball_touch_distance) {
+
+        //println(mag_dist_vect);
+        // the following are used to correct small discrepensies in distances i.e. there is a margin for error depending on the velocity of the ball
+        // dividing by 2 makes it look like the balls are touching 
+        float correct_distance = (ball_touch_distance-mag_dist_vect)/2;
+        PVector d = distance_Vector.copy();
+        // creates copy of the distance vector, normalises it and gets the product of the scalar correction.
+        PVector correction_vector = d.normalize().mult(correct_distance);
+
+        //adjusts to more accurate pos
+        //moves ball in direction of correction vect
+        golf_Balls.get(i).add(correction_vector);
+        //moves ball in opposite direction
+        ball_position.sub(correction_vector);
+        println(correct_distance);
+        // ball 1 is the initial stationary ball, while ball 2 is the 1 hitting the ball
+        //angle of distance vector
+        //float angle_ball1 = distance_Vector.heading();
+
+        //get angle of the distance vector
+        float angle = distance_Vector.heading();
+
+        // get corresponding vector of the older golf ball
+        PVector older_Velocity = velocity_Vectors.get(i);
+        float v_mag = velocity.mag();
+        //new vector components after collision
+        // the new velocity is divided in half
+        older_Velocity.x = (v_mag * cos(angle))/2;
+        older_Velocity.y = (v_mag * sin(angle))/2;
+        // new vector components after collision
+        velocity.x = (v_mag * cos(angle))/2;
+        velocity.y = (v_mag * sin(angle))/2;
+        // change direction
+        velocity.mult(-1);
+      }
+    }
+  }
+  //magnitude of distance seperating the balls
+  // float distance_Vector_Magnitude = distance_Vector.mag();
+}
+
+// only runs in the can move state is true
+// moves left and right and bounces on the edges on the x axis.
+void move_Player() {
+  if (canmove) {
+    // if boolean is true, moves left, if false, moves right
+    if (player_border_hit_check && player_Position.x > 0) {
+      player_Position.sub(player_Velocity);
+    } else {
+      player_border_hit_check = false;
+    }
+
+    if (!player_border_hit_check && player_Position.x < width-30) {
+      player_Position.add(player_Velocity);
+    } else {
+      player_border_hit_check = true;
+    }
+  }
+}
+
+PVector generate_hole_coordinates() {
+
+  float x = random(hole_size, width-hole_size);
+  float y = random(hole_size, border_boundary-hole_size);
+
+  return new PVector(x, y);
+}
+
+void draw_hole(PVector hole_coordinates) {
+  fill(hole_colour);
+  ellipse(hole_coordinates.x, hole_coordinates.y, hole_size, hole_size);
+}
+
+void reset_game() {
+  // resets states, variables and arrays to their initial values and state
+
+  hole_position = generate_hole_coordinates();
+  player_Velocity = new PVector(5, 0); 
+  player_Position = new PVector(500, 800);
+
+  was_n_pressed = false;
+  boolean_switch = true;
+  launch_mode = true;
+  bswitch = false;
+  aswitch = true;
+  player_border_hit_check = true;
+  canmove = true;
+
+  golf_Balls.clear();
+  velocity_Vectors.clear();
+
+  green_Colours_Arrs = new float[cols][rows];
+  green_Colours_Arrs = generate_Colours_Array(cols, rows, xOff, yOff);
+}
+
+void check_win_aka_got_the_dub() {
+  for (int i = 0; i < golf_Balls.size(); i++) {
+    float dist_vect = PVector.dist(hole_position, golf_Balls.get(i));
+    PVector vect_v = velocity_Vectors.get(i);
+    float v_mag = vect_v.mag();
+    if (dist_vect < hole_size/2 && v_mag < 0.1) {
+      reset_game();
+    }
+  }
+}
