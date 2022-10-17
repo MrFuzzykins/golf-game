@@ -1,5 +1,4 @@
-# comp1000-cooper_golf
-
+# golf game
 https://drive.google.com/file/d/1L4_oS9wNBlULrNRGwhnaMyWYuy7NMPxz/view?usp=sharing
 
 
